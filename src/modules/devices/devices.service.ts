@@ -280,7 +280,7 @@ export class DevicesService {
           this.logger.debug(`TCPServer [${deviceId}] 发送数据成功: ${data.toString('hex')}`);
           this.wsPush(deviceId, 'send', {
             address: `${socket.remoteAddress.replace('::ffff:', '')}:${socket.remotePort}`,
-            stream: data.toString('hex'),
+            stream: `${data.toString('hex')} - ${data.toString()}`,
           });
         });
         break;
@@ -292,7 +292,7 @@ export class DevicesService {
           this.logger.log(`UDPServer [${deviceId}] 发送数据成功: ${data.toString('hex')}`);
           this.wsPush(deviceId, 'send', {
             address: `${socket.remoteAddress.replace('::ffff:', '')}:${socket.remotePort}`,
-            stream: data.toString('hex'),
+            stream: `${data.toString('hex')} - ${data.toString()}`,
           });
         });
         break;
@@ -310,7 +310,7 @@ export class DevicesService {
       // 按码流类型获取码流
       const payload = streamType === 'ASCII' ? data.toString() : data.toString('hex');
       // 将 reqStream 中的 [标签] 替换为 .+
-      const reqStreamStr = reqStream.replace(/\[\$.*?\]/g, '.+');
+      const reqStreamStr = reqStream.replace(/\[\$.*?\]/g, '.+').replace(/\[SE:.*?\]/g, '.+');
       // 匹配命令
       const reqStreamReg = new RegExp(`^${reqStreamStr}$`, 'g');
       return reqStreamReg.test(payload);
@@ -333,8 +333,30 @@ export class DevicesService {
         this.logger.error(`${protocol} [${deviceId}] 未找到 ${paramLabel} 的值`);
         return;
       }
+      let length = paramLength;
+      const labelLength = paramLabel.match(/\[\$(.*?)\]/)?.[1].split('|')[1];
+      // 如果参数为不固定长度，则根据 SE 标签获取长度
+      if (labelLength === '?') {
+        const seqMatch = reqStreamModel.match(/\[SE:(.*?)\]/);
+        if (!seqMatch) {
+          this.logger.error(`${protocol} [${deviceId}] 未找到 SE 标签`);
+          return;
+        }
+        const seqIdx = payload.indexOf(seqMatch[1], idx);
+        this.logger.debug(`${protocol} [${deviceId}] seqIdx: ${seqIdx}`);
+        if (seqIdx === -1) {
+          this.logger.error(`${protocol} [${deviceId}] 未在码流中找到分隔符`);
+          return;
+        }
+        length = streamType === 'HEX' ? (seqIdx - idx) / 2 : seqIdx - idx;
+        // 将 SE 标签替换为分隔符
+        reqStreamModel = reqStreamModel.replace(seqMatch[0], seqMatch[1]);
+      } else {
+        length = labelLength ? parseInt(labelLength) : length;
+      }
       // 根据码流类型，获取参数值长度
-      const length = streamType === 'ASCII' ? paramLength : paramLength * 2;
+      length = streamType === 'ASCII' ? length : length * 2;
+      this.logger.debug(`${protocol} [${deviceId}] length: ${length}`);
       // 获取码流中的参数值
       const value = payload.slice(idx, idx + length);
       param.paramValue = value;
@@ -480,7 +502,7 @@ export class DevicesService {
           this.dataHandler(socket, deviceId, data, 'TCPServer');
           this.wsPush(deviceId, 'receive', {
             address: `${socket.remoteAddress.replace('::ffff:', '')}:${socket.remotePort}`,
-            stream: data.toString('hex'),
+            stream: `${data.toString('hex')} - ${data.toString()}`,
           });
         });
 
@@ -548,7 +570,7 @@ export class DevicesService {
         this.dataHandler(socket, deviceId, msg, 'UDPServer');
         this.wsPush(deviceId, 'receive', {
           address: `${rinfo.address}:${rinfo.port}`,
-          stream: msg.toString('hex'),
+          stream: `${msg.toString('hex')} - ${msg.toString()}`,
         });
 
         // 将 socket 保存到 sockets 中,socket可能有多个

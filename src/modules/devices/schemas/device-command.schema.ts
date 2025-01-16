@@ -45,11 +45,11 @@ export class DeviceCommand {
   @Prop({ required: true })
   reqStream: string;
 
-  @Prop({ required: true })
-  resStream: string;
+  @Prop()
+  resStream?: string;
 
   @Prop()
-  storeKey: string;
+  storeKey?: string;
 
   @Prop({ type: [CommandParam], required: true })
   params: CommandParam[];

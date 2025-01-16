@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema';
@@ -44,8 +44,16 @@ export class UsersService {
   }
 
   async create(userData: any): Promise<UserDocument> {
+    const existingUser = await this.findOne(userData.username);
+    if (existingUser) {
+      throw new BadRequestException('用户名已存在');
+    }
+    // 使用md5加密密码
+    const md5 = createHash('md5');
+    const hashedPassword = md5.update('123456').digest('hex');
     const createdUser = new this.userModel({
       ...userData,
+      password: hashedPassword,
     });
     return createdUser.save();
   }

@@ -89,9 +89,9 @@ export class CreateDeviceCommandDto {
 
   @ApiProperty({ description: '响应码流', example: '01 03 02 00 00 B8 44' })
   @IsString({ message: '响应码流必须是字符串' })
-  @IsNotEmpty({ message: '响应码流不能为空' })
+  @IsOptional()
   @Expose()
-  resStream: string;
+  resStream?: string;
 
   @ApiProperty({ description: '存储键', example: 'temperature' })
   @IsString({ message: '存储键必须是字符串' })

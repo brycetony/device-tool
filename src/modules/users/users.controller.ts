@@ -11,11 +11,19 @@ import { Roles } from '../../common/decorators/roles.decorator';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Post()
+  @Post('add')
   @ApiOperation({ summary: '创建用户' })
   @Roles('superadmin')
   async create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+    const user = await this.usersService.create(createUserDto);
+    return {
+      message: '用户创建成功',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+      },
+    };
   }
 
   @Get('list')
