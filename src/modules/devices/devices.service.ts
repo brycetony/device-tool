@@ -310,11 +310,15 @@ export class DevicesService {
       // 按码流类型获取码流
       const payload = streamType === 'ASCII' ? data.toString() : data.toString('hex');
       // 将 reqStream 中的 [标签] 替换为 .+
-      const reqStreamStr = reqStream.replace(/\[\$.*?\]/g, '.+').replace(/\[SE:.*?\]/g, '.+');
+      const reqStreamStr = reqStream.replace(/\[\$.*?\]/g, '.+?').replace(/\[SE:.*?\]/g, '.+?');
+      // this.logger.debug(`${protocol} [${deviceId}] reqStreamStr: ${reqStreamStr}`);
       // 匹配命令
-      const reqStreamReg = new RegExp(`^${reqStreamStr}$`, 'g');
+      const reqStreamReg = new RegExp(`${reqStreamStr}`);
+      // this.logger.debug(`${protocol} [${deviceId}] reqStreamReg: ${reqStreamReg}`);
       return reqStreamReg.test(payload);
     });
+
+    this.logger.debug(`${protocol} [${deviceId}] matchCommand: ${JSON.stringify(matchCommand)}`);
     if (!matchCommand) return;
 
     const { commandType, streamType, reqStream, resStream, storeKey, params } = matchCommand;
@@ -338,19 +342,22 @@ export class DevicesService {
       // 如果参数为不固定长度，则根据 SE 标签获取长度
       if (labelLength === '?') {
         const seqMatch = reqStreamModel.match(/\[SE:(.*?)\]/);
-        if (!seqMatch) {
+        if (seqMatch) {
+          const seqIdx = payload.indexOf(seqMatch[1], idx);
+          this.logger.debug(`${protocol} [${deviceId}] seqIdx: ${seqIdx}`);
+          if (seqIdx === -1) {
+            this.logger.error(`${protocol} [${deviceId}] 未在码流中找到分隔符`);
+            return;
+          }
+          length = streamType === 'HEX' ? (seqIdx - idx) / 2 : seqIdx - idx;
+          // 将 SE 标签替换为分隔符
+          reqStreamModel = reqStreamModel.replace(seqMatch[0], seqMatch[1]);
+        } else if (reqLabels.indexOf(paramLabel) === reqLabels.length - 1) {
+          // 如果 SE 标签是最后一个标签，则 length 为 payload 的长度减去 idx
+          length = payload.length - idx;
+        } else {
           this.logger.error(`${protocol} [${deviceId}] 未找到 SE 标签`);
-          return;
         }
-        const seqIdx = payload.indexOf(seqMatch[1], idx);
-        this.logger.debug(`${protocol} [${deviceId}] seqIdx: ${seqIdx}`);
-        if (seqIdx === -1) {
-          this.logger.error(`${protocol} [${deviceId}] 未在码流中找到分隔符`);
-          return;
-        }
-        length = streamType === 'HEX' ? (seqIdx - idx) / 2 : seqIdx - idx;
-        // 将 SE 标签替换为分隔符
-        reqStreamModel = reqStreamModel.replace(seqMatch[0], seqMatch[1]);
       } else {
         length = labelLength ? parseInt(labelLength) : length;
       }
@@ -382,6 +389,11 @@ export class DevicesService {
         this.logger.debug(`${protocol} [${deviceId}] existingData: ${storeKey} = ${JSON.stringify(existingData)}`);
         this.storeData.set(`${deviceId}-${storeKey}`, { ...existingData, [uniqueKey]: storeData });
         this.logger.debug(`${protocol} [${deviceId}] 存储数据: ${storeKey} = ${JSON.stringify({ [uniqueKey]: storeData })}`);
+        if (resStream) {
+          this.logger.debug(`${protocol} [${deviceId}] 发送响应数据: ${resStream}`);
+          const sendData = streamType === 'ASCII' ? Buffer.from(resStream.replace(/\\r\\n/g, '\r\n')) : Buffer.from(resStream, 'hex');
+          this.sendData(_socket, deviceId, sendData, protocol);
+        }
         break;
       case 'GET':
         const retrievedStoreData = this.storeData.get(`${deviceId}-${storeKey}`) || {};
